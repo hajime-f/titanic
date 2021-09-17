@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+from sklearn.ensemble import GradientBoostingRegressor
 
 import pdb
 
@@ -34,19 +34,21 @@ def build_cabin_df(df):
     cabin = df['Cabin'].to_list()
     for i, c in enumerate(cabin):
         if 'A' in str(c):
-            cabin[i] = 1
+            cabin[i] = float(1.0)
         elif 'B' in str(c):
-            cabin[i] = 2
+            cabin[i] = float(2.0)
         elif 'C' in str(c):
-            cabin[i] = 3
+            cabin[i] = float(3.0)
         elif 'D' in str(c):
-            cabin[i] = 4
+            cabin[i] = float(4.0)
         elif 'E' in str(c):
-            cabin[i] = 5
+            cabin[i] = float(5.0)
         elif 'F' in str(c):
-            cabin[i] = 6
+            cabin[i] = float(6.0)
         elif 'G' in str(c):
-            cabin[i] = 7
+            cabin[i] = float(7.0)
+        elif 'T' in str(c):
+            cabin[i] = float(8.0)
         else:
             pass
 
@@ -80,17 +82,33 @@ if __name__ == '__main__':
     df['Sex'] = df['Sex'].apply(lambda x: 1 if x == 'male' else 0)
     df['Embarked'] = df['Embarked'].fillna('S')
     df['Embarked'] = df['Embarked'].map( {'S':0, 'C':1, 'Q':2}).astype(int)
-    
-    # 不要なデータを破棄
-    df = df.drop(['PassengerId', 'Survived', 'Name'], axis =1)
 
-    # 入出力データを生成
-    X = df.drop('Cabin', axis=1)
-    Y = df['Cabin']
+    # 不要なデータを破棄
+    df = df.drop(['PassengerId', 'Survived', 'Name'], axis=1)
+
+    # Cabin が NaN を削除
+    cabin_df = df.dropna(how='any')
     
+    # 入出力データを生成
+    X = cabin_df.drop('Cabin', axis=1)
+    Y = cabin_df['Cabin']
+
     # 0〜1の範囲で正規化
     X = (X - X.min()) / (X.max() - X.min())
+    Y = (Y - Y.min()) / (Y.max() - Y.min())
+    
+    # モデルの学習
+    GBDT = GradientBoostingRegressor()
+    GBDT.fit(X, Y)
+    
+    # 回帰
+    cabin_x = df[df.isnull().any(1)].drop(['Cabin'], axis=1)
+    pred = GBDT.predict(cabin_x)
 
-    
+    j = 0
+    for i, c in enumerate(df['Cabin']):
+        if np.isnan(c):
+            df['Cabin'][i] = pred[j]
+            j += 1
+
     pdb.set_trace()
-    
