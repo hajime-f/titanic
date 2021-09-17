@@ -98,8 +98,6 @@ if __name__ == '__main__':
     X = cabin_df.drop('Cabin', axis=1)
     Y = cabin_df['Cabin']
 
-    pdb.set_trace()
-
     # 0〜1の範囲で正規化
     X = (X - X.min()) / (X.max() - X.min())
     Y = (Y - Y.min()) / (Y.max() - Y.min())
@@ -110,17 +108,33 @@ if __name__ == '__main__':
     
     # 回帰
     cabin_x = df[df.isnull().any(1)].drop(['Cabin'], axis=1)
-    pred = GBDT.predict(cabin_x)
+    pred = pd.DataFrame(GBDT.predict(cabin_x))
 
+    series = df['Cabin']
+    dataframe = pred
+    
+    pdb.set_trace()
+    
+    # df[df['Cabin'].isnull()]['Cabin'] = pred
+    
+    #cab = pd.DataFrame(df['Cabin'])
+    #pdb.set_trace()
+    #df[df.loc[cab.isnull()], 'Cabin'] = pred
+    
+    
     j = 0
     for i, c in enumerate(df['Cabin']):
         if np.isnan(c):
-            df['Cabin'][i] = pred[j]
+            df['Cabin'][i] = pred[0][j]
             j += 1
-
+    
     # 入出力データを生成
-    X = df
+    X = pd.DataFrame(df)
     Y = Survived
+
+    # 0〜1の範囲で正規化
+    X = (X - X.min()) / (X.max() - X.min())
+    Y = (Y - Y.min()) / (Y.max() - Y.min())
 
     pdb.set_trace()
     
