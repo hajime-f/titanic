@@ -1,9 +1,13 @@
 import numpy as np
 import pandas as pd
+from sklearn.utils import all_estimators
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
+import warnings
 
 import pdb
 
-def extract_title():
+def extract_title(df):
 
     Title_Dictionary = {
         "Capt": 0, "Col": 0, "Major": 0, "Dr": 0, "Rev": 0,
@@ -16,7 +20,7 @@ def extract_title():
     return df['Name'].map(lambda name:name.split(',')[1].split('.')[0].strip()).map(Title_Dictionary)
 
 
-def complement_age():
+def complement_age(df):
 
     # 年齢の欠損値を補完
     a1 = df['Age'][(df['Pclass'] == 1) & (df['Sex'] == 'male') & (df['Title'] == 0)].fillna(51.0)
@@ -67,36 +71,149 @@ def complement_age():
                                 a31, a32, a33, a34, a35, a36]).fillna(0))
 
 
-if __name__ == '__main__':
+def build_ticket_df(df):
 
-    df = pd.read_csv('train.csv')
-    pd.set_option('display.max_rows', 10000)
+    ticket = df['Ticket'].str.split(' ', expand=True)
+
+    ticket1 = ticket[0].to_list()
+    ticket2 = ticket[1].to_list()
+    ticket3 = ticket[2].to_list()
+
+    ticket_num = []
     
-    # 名前から肩書きを抜き出して「Title」に入れる
-    df['Title'] = extract_title()
+    for t1, t2, t3 in zip(ticket1, ticket2, ticket3):
+        try:
+            ticket_num.append(int(t1))
+        except:
+            try:
+                ticket_num.append(int(t2))
+            except:
+                try:
+                    ticket_num.append(int(t3))
+                except:
+                    ticket_num.append(0)
 
-    # 肩書きを one-hot に展開する
-    title_dummies = pd.get_dummies(df['Title'], prefix='Title')
-    df = pd.concat([df, title_dummies], axis=1)
+    return pd.DataFrame(ticket_num)
+
+
+def clean_cabin(df):
+    
+    cabin = df['Cabin'].to_list()
+    for i, c in enumerate(cabin):
+        if 'A' in str(c):
+            cabin[i] = float(1.0)
+        elif 'B' in str(c):
+            cabin[i] = float(2.0)
+        elif 'C' in str(c):
+            cabin[i] = float(3.0)
+        elif 'D' in str(c):
+            cabin[i] = float(4.0)
+        elif 'E' in str(c):
+            cabin[i] = float(5.0)
+        elif 'F' in str(c):
+            cabin[i] = float(6.0)
+        elif 'G' in str(c):
+            cabin[i] = float(7.0)
+        elif 'T' in str(c):
+            cabin[i] = float(8.0)
+        else:
+            cabin[i] = float(0.0)
+
+    return pd.DataFrame(cabin)
+
+
+def process_df(df):
+
+    # 名前から肩書きを抜き出す
+    df['Title'] = extract_title(df)
 
     # 年齢の欠損値を補完する
-    df['Age'] = complement_age()
+    df['Age'] = complement_age(df)
     
     # 性別を数値に変換する
     df['Sex'] = df['Sex'].apply(lambda x: 1 if x == 'male' else 0)
     
-    # 旅客運賃の欠損値を補完
+    # 旅客運賃の欠損値を補完する
     df['Fare'] = df['Fare'].fillna(df['Fare'].median())
 
-    # 乗船港の欠損値を補完し、one-hot に展開する
+    # 乗船港の欠損値を補完する
     df['Embarked'] = df['Embarked'].fillna('S')
-    embarked_dummies = pd.get_dummies(df['Embarked'], prefix='Embarked')
-    df = pd.concat([df, embarked_dummies], axis=1)
+    df['Embarked'] = df['Embarked'].map( {'S':0, 'C':1, 'Q':2}).astype(int)
     
+    # チケット番号を整理する
+    df['Ticket'] = build_ticket_df(df)
+
+    # 客室番号を整理する
+    df['Cabin'] = clean_cabin(df)
+    
+    return df
 
 
+if __name__ == '__main__':
+
+    # 訓練データを読み込み
+    df = process_df(pd.read_csv('train.csv'))
+    
     # 不要なデータを破棄
     Survived = df['Survived']
-    df = df.drop(['PassengerId', 'Survived', 'Name', 'Title', 'Embarked'], axis=1)
+    df = df.drop(['PassengerId', 'Survived', 'Name'], axis=1)
     
+    # 0〜1の範囲で正規化
+    df = (df - df.min()) / (df.max() - df.min())
+    
+    # 入出力データを生成
+    X = df
+    Y = Survived
+    
+    # クロスバリデーション用のオブジェクトをインスタンス化する
+    kfold_cv = KFold(n_splits=5, shuffle=False)
+    warnings.filterwarnings('ignore')
+
+    # classifier のアルゴリズムをすべて取得する
+    all_Algorithms = all_estimators(type_filter="classifier")
+    warnings.filterwarnings('ignore')
+    
+    max_clf = None
+    max_score = -1
+    
+    # 各分類アルゴリズムをクロスバリデーションで評価する
+    for (name, algorithm) in all_Algorithms:
+        try:
+            if (name == "LinearSVC"):
+                clf = algorithm(max_iter = 10000)
+            else:
+                clf = algorithm()
+              
+            if hasattr(clf, "score"):
+                scores = cross_val_score(clf, X, Y, cv=kfold_cv)
+                print(name, "の正解率：")
+                print(scores)
+                if max_score < np.mean(scores):
+                    max_clf = clf
+                    max_score = np.mean(scores)
+        except Exception as e:
+            pass
+        
+    print(max_clf, max_score)
+        
+    # 平均正解率が最高だったモデルをトレーニング
+    max_clf = max_clf.fit(X, Y)
+    
+    # テストデータを読み込み
+    df_test = process_df(pd.read_csv('test.csv'))
+    passsengerid = df_test['PassengerId']
+    
+    # 不要なデータを破棄
+    df_test = df_test.drop(['PassengerId', 'Name'], axis=1)
+    
+    # 0〜1の範囲で正規化
+    X_test = (df_test - df_test.min()) / (df_test.max() - df_test.min())
+    X_test = X_test.fillna(0)
+    
+    # 結果を出力
+    pred = max_clf.predict(X_test)
+    result = [int(i) for i in pred]
+    
+    submission = pd.DataFrame({'PassengerId':passsengerid, 'Survived':result})
+    submission.to_csv('submission.csv', index=False)
     
